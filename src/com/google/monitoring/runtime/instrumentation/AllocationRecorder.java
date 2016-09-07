@@ -58,8 +58,6 @@ public class AllocationRecorder {
     instrumentation = inst;
   }
 
-  private static volatile Sampler sampler;
-
   // List of packages that can add samplers.
   private static final List<String> classNames = new ArrayList<String>();
 
@@ -69,17 +67,10 @@ public class AllocationRecorder {
 
   // Used for reentrancy checks
   private static final ThreadLocal<Boolean> recordingAllocation = new ThreadLocal<Boolean>();
+  
+  // Will only record array allocations of at least this size
+  private static final int MIN_ARRAY_SIZE = 500;
 
-  public static void setSampler(Sampler s) {
-		sampler = s;
-	}
-
-  public static void recordAllocation(Class<?> cls, Object newObj) {
-    // The use of replace makes calls to this method relatively ridiculously
-    // expensive.
-    String typename = cls.getName().replace('.', '/');
-    recordAllocation(-1, typename, newObj);
-  }
 
   /**
    * Records the allocation.  This method is invoked on every allocation
@@ -94,14 +85,9 @@ public class AllocationRecorder {
    *   recorded.
    */
   public static void recordAllocation(int count, String desc, Object newObj) {
-	 if (sampler == null) {
+	 if (count < MIN_ARRAY_SIZE) {
 		 return;
 	 }
-	 
-	 if (count < 0) {
-		 return;
-	 }
-	  
 	  
     if (recordingAllocation.get() == Boolean.TRUE) {
       return;
@@ -110,17 +96,13 @@ public class AllocationRecorder {
     
     recordingAllocation.set(Boolean.TRUE);
 
-    // NB: This could be smaller if the defaultSampler were merged with the
-    // optional samplers.  However, you don't need the optional samplers in
-    // the common case, so I thought I'd save some space.
-
     // Copy value into local variable to prevent NPE that occurs when
     // instrumentation field is set to null by this class's shutdown hook
     // after another thread passed the null check but has yet to call
     // instrumentation.getObjectSize()
     Instrumentation instr = instrumentation;
     if (instr != null) {
-    	sampler.sampleAllocation(count, desc, newObj, -1);
+    	System.out.println("Allocating array " + desc + " of " + count + " elements");
     }
 
     recordingAllocation.set(Boolean.FALSE);
