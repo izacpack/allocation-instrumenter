@@ -111,9 +111,9 @@ public class AllocationInstrumenter implements ClassFileTransformer {
     // When "subclassesAlso" is specified, samplers are also invoked when
     // SubclassOfA.<init> is called while only class A is specified to be
     // instrumented.
-    ConstructorInstrumenter.subclassesAlso = args.contains("subclassesAlso");
-    inst.addTransformer(new ConstructorInstrumenter(),
-        inst.isRetransformClassesSupported());
+//    ConstructorInstrumenter.subclassesAlso = args.contains("subclassesAlso");
+//    inst.addTransformer(new ConstructorInstrumenter(),
+//        inst.isRetransformClassesSupported());
 
     if (!args.contains("manualOnly")) {
       bootstrap(inst);
@@ -161,7 +161,7 @@ public class AllocationInstrumenter implements ClassFileTransformer {
 
   /**
    * Given the bytes representing a class, go through all the bytecode in it and
-   * instrument any occurences of new/newarray/anewarray/multianewarray with
+   * instrument any occurrences of new/newarray/anewarray/multianewarray with
    * pre- and post-allocation hooks.  Even more fun, intercept calls to the
    * reflection API's Array.newInstance() and instrument those too.
    *
