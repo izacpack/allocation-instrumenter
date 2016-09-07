@@ -341,6 +341,11 @@ class AllocationMethodAdapter extends MethodVisitor {
       }
     }
 
+    // !!! THIS BLOCK HANDLES clone and "new-opcode" allocations.  I.e., non-array allocations.
+    // (Array clone operations are handled above.)
+    // This is expensive because the size must be computed manually.  Hopefully the large
+    // objects I'm looking for will be arrays.  (Such large, non-array objects could only be
+    // defined via byte code manipulation - I assume.  Hopefully that is not what the problem is.
     if (opcode == Opcodes.INVOKESPECIAL) {
       if ("clone".equals(name) && "java/lang/Object".equals(owner)) {
     	// NOT HANDLING "clone" call... (because we would need to compute the object size explicitly
