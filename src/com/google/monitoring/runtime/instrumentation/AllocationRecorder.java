@@ -19,6 +19,7 @@ package com.google.monitoring.runtime.instrumentation;
 import java.lang.instrument.Instrumentation;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The logic for recording allocations, called from bytecode rewritten by
@@ -58,18 +59,14 @@ public class AllocationRecorder {
     instrumentation = inst;
   }
 
-  // List of packages that can add samplers.
-  private static final List<String> classNames = new ArrayList<String>();
-
-  static {
-    classNames.add("com.google.monitoring.runtime.");
-  }
-
   // Used for reentrancy checks
   private static final ThreadLocal<Boolean> recordingAllocation = new ThreadLocal<Boolean>();
   
   // Will only record array allocations of at least this size
-  private static final int MIN_ARRAY_SIZE = 500;
+  public static volatile int minArraySize;
+  
+  // Maximum number of stack traces
+  public static AtomicInteger stackTracesRemaining = new AtomicInteger();
 
 
   /**
@@ -85,7 +82,7 @@ public class AllocationRecorder {
    *   recorded.
    */
   public static void recordAllocation(int count, String desc, Object newObj) {
-	 if (count < MIN_ARRAY_SIZE) {
+	 if (count < minArraySize) {
 		 return;
 	 }
 	  
@@ -102,7 +99,12 @@ public class AllocationRecorder {
     // instrumentation.getObjectSize()
     Instrumentation instr = instrumentation;
     if (instr != null) {
-    	System.out.println("Allocating array " + desc + " of " + count + " elements");
+    	System.err.println("Allocating array " + desc + " of " + count + " elements");
+    	int str;
+    	if ((str = stackTracesRemaining.get()) > 0) {
+    		Thread.dumpStack();
+    		stackTracesRemaining.compareAndSet(str, str-1);
+    	}
     }
 
     recordingAllocation.set(Boolean.FALSE);
