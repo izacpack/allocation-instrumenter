@@ -18,13 +18,7 @@ package com.google.monitoring.runtime.instrumentation;
 
 import java.lang.instrument.Instrumentation;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentMap;
-
-import com.google.common.collect.ForwardingMap;
-import com.google.common.collect.MapMaker;
 
 /**
  * The logic for recording allocations, called from bytecode rewritten by
@@ -64,13 +58,7 @@ public class AllocationRecorder {
     instrumentation = inst;
   }
 
-  // Mostly because, yes, arrays are faster than collections.
-  private static volatile Sampler [] additionalSamplers;
-
-  // Protects mutations of additionalSamplers.  Reads are okay because
-  // the field is volatile, so anyone who reads additionalSamplers
-  // will get a consistent view of it.
-  private static final Object samplerLock = new Object();
+  private static volatile Sampler sampler;
 
   // List of packages that can add samplers.
   private static final List<String> classNames = new ArrayList<String>();
@@ -82,126 +70,9 @@ public class AllocationRecorder {
   // Used for reentrancy checks
   private static final ThreadLocal<Boolean> recordingAllocation = new ThreadLocal<Boolean>();
 
-  // Stores the object sizes for the last ~100000 encountered classes
-  private static final ForwardingMap<Class<?>, Long> classSizesMap =
-    new ForwardingMap<Class<?>, Long>() {
-      private final ConcurrentMap<Class<?>, Long> map = new MapMaker()
-          .weakKeys()
-          .makeMap();
-
-      @Override public Map<Class<?>, Long> delegate() {
-        return map;
-      }
-
-      // The approximate maximum size of the map
-      private static final int MAX_SIZE = 100000;
-
-      // The approximate current size of the map; since this is not an AtomicInteger
-      // and since we do not synchronize the updates to this field, it will only be
-      // an approximate size of the map; it's good enough for our purposes though,
-      // and not synchronizing the updates saves us some time
-      private int approximateSize = 0;
-
-      @Override
-      public Long put(Class<?> key, Long value) {
-        // if we have too many elements, delete about 10% of them
-        // this is expensive, but needs to be done to keep the map bounded
-        // we also need to randomize the elements we delete: if we remove the same
-        // elements all the time, we might end up adding them back to the map
-        // immediately after, and then remove them again, then add them back, etc.
-        // which will cause this expensive code to be executed too often
-        if (approximateSize >= MAX_SIZE) {
-          for (Iterator<Class<?>> it = keySet().iterator(); it.hasNext(); ) {
-            it.next();
-            if (Math.random() < 0.1) {
-              it.remove();
-            }
-          }
-
-          // get the exact size; another expensive call, but we need to correct
-          // approximateSize every once in a while, or the difference between
-          // approximateSize and the actual size might become significant over time;
-          // the other solution is synchronizing every time we update approximateSize,
-          // which seems even more expensive
-          approximateSize = size();
-        }
-
-        approximateSize++;
-        return super.put(key, value);
-    }
-  };
-
-  /**
-   * Adds a {@link Sampler} that will get run <b>every time an allocation is
-   * performed from Java code</b>.  Use this with <b>extreme</b> judiciousness!
-   *
-   * @param sampler  The sampler to add.
-   */
-  public static void addSampler(Sampler sampler) {
-    synchronized (samplerLock) {
-      Sampler[] samplers = additionalSamplers;
-      /* create a new list of samplers from the old, adding this sampler */
-      if (samplers != null) {
-        Sampler [] newSamplers = new Sampler[samplers.length + 1];
-        System.arraycopy(samplers, 0, newSamplers, 0, samplers.length);
-        newSamplers[samplers.length] = sampler;
-        additionalSamplers = newSamplers;
-      } else {
-        Sampler[] newSamplers = new Sampler[1];
-        newSamplers[0] = sampler;
-        additionalSamplers = newSamplers;
-      }
-    }
-  }
-
-  /**
-   * Removes the given {@link Sampler}.
-   *
-   * @param sampler  The sampler to remove.
-   */
-  public static void removeSampler(Sampler sampler) {
-    synchronized (samplerLock) {
-      Sampler[] samplers = additionalSamplers;
-      int samplerCount = samplers.length;
-      for (Sampler s : samplers) {
-        if (s.equals(sampler)) {
-          samplerCount--;
-        }
-      }
-      Sampler[] newSamplers = new Sampler[samplerCount];
-      int i = 0;
-      for (Sampler s : samplers) {
-        if (!s.equals(sampler)) {
-          newSamplers[i++] = s;
-        }
-      }
-      additionalSamplers = newSamplers;
-    }
-  }
-
-  /**
-   * Returns the size of the given object. If the object is not an array, we
-   * check the cache first, and update it as necessary.
-   *
-   * @param obj the object.
-   * @param isArray indicates if the given object is an array.
-   * @param instr the instrumentation object to use for finding the object size
-   * @return the size of the given object.
-   */
-  private static long getObjectSize(Object obj, boolean isArray, Instrumentation instr) {
-    if (isArray) {
-      return instr.getObjectSize(obj);
-    }
-
-    Class<?> clazz = obj.getClass();
-    Long classSize = classSizesMap.get(clazz);
-    if (classSize == null) {
-      classSize = instr.getObjectSize(obj);
-      classSizesMap.put(clazz, classSize);
-    }
-
-    return classSize;
-  }
+  public static void setSampler(Sampler s) {
+		sampler = s;
+	}
 
   public static void recordAllocation(Class<?> cls, Object newObj) {
     // The use of replace makes calls to this method relatively ridiculously
@@ -223,11 +94,21 @@ public class AllocationRecorder {
    *   recorded.
    */
   public static void recordAllocation(int count, String desc, Object newObj) {
+	 if (sampler == null) {
+		 return;
+	 }
+	 
+	 if (count < 0) {
+		 return;
+	 }
+	  
+	  
     if (recordingAllocation.get() == Boolean.TRUE) {
       return;
-    } else {
-      recordingAllocation.set(Boolean.TRUE);
-    }
+    } 
+      
+    
+    recordingAllocation.set(Boolean.TRUE);
 
     // NB: This could be smaller if the defaultSampler were merged with the
     // optional samplers.  However, you don't need the optional samplers in
@@ -239,48 +120,10 @@ public class AllocationRecorder {
     // instrumentation.getObjectSize()
     Instrumentation instr = instrumentation;
     if (instr != null) {
-      // calling getObjectSize() could be expensive,
-      // so make sure we do it only once per object
-      long objectSize = -1;
-
-      Sampler[] samplers = additionalSamplers;
-      if (samplers != null) {
-        if (objectSize < 0) {
-          objectSize = getObjectSize(newObj, (count >= 0), instr);
-        }
-        for (Sampler sampler : samplers) {
-          sampler.sampleAllocation(count, desc, newObj, objectSize);
-        }
-      }
+    	sampler.sampleAllocation(count, desc, newObj, -1);
     }
 
     recordingAllocation.set(Boolean.FALSE);
   }
 
-  /**
-   * Helper method to force recording; for unit tests only.
-   * @param count the number of objects being allocated.
-   * @param desc the descriptor of the class of the object being allocated.
-   * @param newObj the object being allocated.
-   */
-  public static void recordAllocationForceForTest(int count, String desc,
-                                                  Object newObj) {
-    // Make sure we get the right number of elided frames
-    recordAllocationForceForTestReal(count, desc, newObj, 2);
-  }
-
-  /**
-   * Helper method to force recording; for unit tests only.
-   * @param count the number of objects being allocated.
-   * @param desc the descriptor of the class of the object being allocated.
-   * @param newObj the object being allocated.
-   * @param recurse A recursion count.
-   */
-  public static void recordAllocationForceForTestReal(
-      int count, String desc, Object newObj, int recurse) {
-    if (recurse != 0) {
-      recordAllocationForceForTestReal(count, desc, newObj, recurse - 1);
-      return;
-    }
-  }
 }

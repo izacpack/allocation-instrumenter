@@ -197,7 +197,7 @@ public class ConstructorInstrumenter implements ClassFileTransformer {
    * the class that was supposed to be tracked.
    * @param o the object passed to the samplers.
    */
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({ "unchecked", "rawtypes" })
   public static void invokeSamplers(Object o) {
     Class<?> currentClass = o.getClass();
     while (currentClass != null) {
