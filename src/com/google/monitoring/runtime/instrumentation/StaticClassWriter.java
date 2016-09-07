@@ -145,7 +145,7 @@ class StaticClassWriter extends ClassWriter {
         this.loader = loader;
         this.isInterface = cls.isInterface();
         this.superClass = cls.getSuperclass().getName();
-        Class[] ifs = cls.getInterfaces();
+        Class<?>[] ifs = cls.getInterfaces();
         this.interfaces = new String[ifs.length];
         for (int i = 0; i < ifs.length; i++) {
           this.interfaces[i] = ifs[i].getName();

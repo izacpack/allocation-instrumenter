@@ -2,10 +2,6 @@
 *.ims
 *.iml
 
-.classpath
-.project
-.settings/
-
 target/
 
 bin/
