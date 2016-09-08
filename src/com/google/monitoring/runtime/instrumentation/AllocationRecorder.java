@@ -17,8 +17,7 @@
 package com.google.monitoring.runtime.instrumentation;
 
 import java.lang.instrument.Instrumentation;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -102,7 +101,9 @@ public class AllocationRecorder {
     	System.err.println("Allocating array " + desc + " of " + count + " elements");
     	int str;
     	if ((str = stackTracesRemaining.get()) > 0) {
-    		Thread.dumpStack();
+    		StackTraceElement[] st = Thread.currentThread().getStackTrace();
+    		String stString = Arrays.toString(st);
+    		System.err.println(stString);
     		stackTracesRemaining.compareAndSet(str, str-1);
     	}
     }
